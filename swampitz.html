@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SWAMPITZ — Generate from Swamperz</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!--
+  ============================================================================
+  SETUP — read this before deploying
+  ============================================================================
+  This page expects a folder of reference images sitting next to it:
+
+    your-repo/
+     ├─ swampitz.html   (this file)
+     └─ swamperz/
+         ├─ 001.png
+         ├─ 002.png
+         ├─ ...
+         └─ 555.png
+
+  Filenames are zero-padded to 3 digits by default. If your files are named
+  differently (no padding, a prefix, a different extension, a different
+  folder name), edit the CONFIG object near the top of the <script> block
+  below — nothing else needs to change.
+
+  There is no upload control anywhere in this page and no code path that
+  writes to the swamperz/ folder, so visitors to the page can't add, replace,
+  or remove reference images — the only way to change the collection is by
+  editing the files in the repo itself. That's the practical ceiling for
+  "backend" access control on something served as static HTML with no
+  server of its own; a visitor who opens dev tools can still see which
+  image file loaded, same as any static image on any static site.
+  ============================================================================
+-->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #0c120d;
+    --panel: #141c15;
+    --panel-2: #19231b;
+    --line: #263a29;
+    --line-soft: #1e2c20;
+    --text: #e8ece5;
+    --text-dim: #7f9584;
+    --glow: #8cff6b;
+    --amber: #e3a83b;
+    --err: #ff6b6b;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    background: var(--bg);
+    color: var(--text);
+    font-family:'Inter', system-ui, sans-serif;
+    margin:0;
+    min-height:100vh;
+  }
+  ::selection{ background: var(--glow); color:#0c120d; }
+
+  .wrap{ max-width: 1080px; margin:0 auto; padding: 28px 20px 60px; }
+
+  header{
+    display:flex; align-items:baseline; justify-content:space-between;
+    gap:16px; padding-bottom:20px; margin-bottom:24px;
+    border-bottom:1px solid var(--line); flex-wrap:wrap;
+  }
+  .title{
+    font-family:'JetBrains Mono', monospace;
+    font-weight:800; font-size:26px; letter-spacing:0.5px;
+  }
+  .title .glow{ color: var(--glow); }
+  .subtitle{
+    font-family:'JetBrains Mono', monospace;
+    font-size:12.5px; color:var(--text-dim);
+    max-width:440px; line-height:1.5;
+  }
+
+  .layout{ display:grid; grid-template-columns: 260px 1fr; gap:22px; }
+  @media (max-width: 880px){ .layout{ grid-template-columns: 1fr; } }
+
+  .panel{ background:var(--panel); border:1px solid var(--line); border-radius:3px; padding:16px; }
+  .panel + .panel{ margin-top:16px; }
+
+  .label{
+    font-family:'JetBrains Mono', monospace; font-size:11px;
+    color:var(--text-dim); letter-spacing:0.6px; margin-bottom:10px;
+    display:flex; justify-content:space-between;
+  }
+
+  .search-row{ display:flex; gap:8px; }
+  input[type=number]{
+    flex:1; min-width:0;
+    background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    font-family:'JetBrains Mono', monospace; font-size:16px;
+    border-radius:3px; padding:9px 10px;
+  }
+  input[type=number]:focus{ outline:none; border-color:var(--glow); }
+  input[type=number]::-webkit-inner-spin-button{ opacity:1; }
+
+  button{
+    font-family:'Inter', sans-serif; font-size:13.5px; font-weight:600;
+    background:var(--panel-2); color:var(--text); border:1px solid var(--line);
+    border-radius:3px; padding:9px 14px; cursor:pointer;
+    transition:border-color .12s ease, transform .05s ease;
+  }
+  button:hover{ border-color:var(--text-dim); }
+  button:active{ transform:scale(0.98); }
+  button:disabled{ opacity:0.35; cursor:not-allowed; }
+  button.primary{ background:var(--glow); border-color:var(--glow); color:#0c1408; }
+  button.primary:hover{ filter:brightness(1.08); }
+  button.ghost{ background:transparent; }
+  button.wide{ width:100%; }
+
+  .prevnext{ display:flex; gap:8px; margin-top:8px; }
+  .prevnext button{ flex:1; font-family:'JetBrains Mono', monospace; font-size:12px; }
+
+  .status{
+    margin-top:12px;
+    font-family:'JetBrains Mono', monospace; font-size:11.5px;
+    line-height:1.6; min-height: 16px;
+  }
+  .status.ok{ color:var(--glow); }
+  .status.err{ color:var(--err); }
+  .status.idle{ color:var(--text-dim); }
+
+  .ref-thumb-wrap{
+    margin-top:14px; display:none;
+  }
+  .ref-thumb-wrap img{
+    width:100%; aspect-ratio:1; object-fit:contain;
+    image-rendering:pixelated;
+    background:
+      linear-gradient(45deg, #1b241c 25%, transparent 25%, transparent 75%, #1b241c 75%),
+      linear-gradient(45deg, #1b241c 25%, transparent 25%, transparent 75%, #1b241c 75%);
+    background-size:16px 16px; background-position:0 0, 8px 8px;
+    background-color:#141c15;
+    border:1px solid var(--line); border-radius:3px;
+  }
+  .ref-label{
+    font-family:'JetBrains Mono', monospace; font-size:10.5px;
+    color:var(--text-dim); margin-top:6px; text-align:center;
+  }
+
+  .swatches{ display:grid; grid-template-columns:repeat(8,1fr); gap:5px; margin-top:2px; }
+  .swatch{ aspect-ratio:1; border-radius:2px; border:1px solid rgba(255,255,255,0.08); position:relative; }
+  .swatch.unused{ opacity:0.22; }
+  .palette-empty{
+    font-family:'JetBrains Mono', monospace; font-size:11.5px;
+    color:var(--text-dim); line-height:1.6;
+  }
+  .palette-note{
+    font-family:'JetBrains Mono', monospace; font-size:10.5px;
+    color:var(--text-dim); margin-top:8px;
+  }
+
+  .canvas-area{ display:flex; flex-direction:column; align-items:center; }
+  .canvas-frame{
+    border:1px solid var(--line); border-radius:3px; padding:14px;
+    background:var(--panel);
+  }
+  .canvas-stack{ position:relative; width:min(76vw, 384px); aspect-ratio:1; background:#ffffff; }
+  #mosaicCanvas, #guideOverlay{
+    position:absolute; top:0; left:0; width:100%; height:100%;
+    image-rendering:pixelated; image-rendering:crisp-edges;
+  }
+  #guideOverlay{ pointer-events:none; }
+
+  .canvas-meta{
+    display:flex; justify-content:space-between; width:min(76vw, 384px);
+    margin-top:10px; font-family:'JetBrains Mono', monospace; font-size:11px; color:var(--text-dim);
+  }
+  .canvas-meta label{ display:flex; align-items:center; gap:6px; cursor:pointer; }
+
+  .action-row{ display:flex; gap:10px; margin-top:18px; width:min(76vw, 384px); }
+  .action-row button{ flex:1; }
+
+  .placeholder{
+    display:flex; align-items:center; justify-content:center; text-align:center;
+    height:100%; padding: 20px;
+    font-family:'JetBrains Mono', monospace; font-size:12px; color:#9aa79c;
+    line-height:1.7;
+  }
+
+  .toast{
+    position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--panel-2); border:1px solid var(--glow); color:var(--text);
+    font-family:'JetBrains Mono', monospace; font-size:12px;
+    padding:10px 16px; border-radius:3px; opacity:0; pointer-events:none;
+    transition:opacity .2s ease, transform .2s ease; z-index:50;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="title">SWAMP<span class="glow">ITZ</span></div>
+      <div class="subtitle">Search a Swamperz (1–555) to pull its palette, then generate a fragmented 24×24 mosaic — a Swampitz — built only from that character's colors.</div>
+    </div>
+  </header>
+
+  <div class="layout">
+
+    <!-- LEFT: search + reference + palette -->
+    <div class="left-col">
+
+      <div class="panel">
+        <div class="label"><span>SWAMPERZ #</span></div>
+        <div class="search-row">
+          <input type="number" id="numberInput" min="1" max="555" placeholder="1–555">
+          <button id="goBtn" class="primary">Go</button>
+        </div>
+        <div class="prevnext">
+          <button id="prevBtn">← Prev</button>
+          <button id="nextBtn">Next →</button>
+        </div>
+        <div id="status" class="status idle">Enter a number from 1–555 to begin.</div>
+
+        <div class="ref-thumb-wrap" id="refThumbWrap">
+          <img id="refThumb" alt="Swamperz reference">
+          <div class="ref-label" id="refLabel"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="label"><span>PALETTE EXTRACTED</span><span id="paletteCount"></span></div>
+        <div id="swatches" class="swatches"></div>
+        <div id="paletteEmpty" class="palette-empty">No Swamperz loaded yet.</div>
+        <div id="paletteNote" class="palette-note" style="display:none;"></div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT: canvas + actions -->
+    <div class="right-col">
+      <div class="canvas-area">
+        <div class="canvas-frame">
+          <div class="canvas-stack" id="canvasStack">
+            <canvas id="mosaicCanvas" width="24" height="24"></canvas>
+            <canvas id="guideOverlay" width="384" height="384"></canvas>
+            <div class="placeholder" id="placeholder">Swampitz will render here once a Swamperz is loaded.</div>
+          </div>
+        </div>
+        <div class="canvas-meta">
+          <label><input type="checkbox" id="guideToggle" checked> show 16×16 guide</label>
+          <span>24 × 24 canvas · white background</span>
+        </div>
+        <div class="action-row">
+          <button id="rerollBtn" disabled>Reroll</button>
+          <button id="downloadBtn" class="primary" disabled>Download PNG — 600×600</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  // ==========================================================================
+  // CONFIG — edit these two lines if your files/folder are named differently
+  // ==========================================================================
+  const CONFIG = {
+    folder: 'swamperz/',   // folder this HTML file sits next to
+    digits: 3,             // zero-padding width: 007.png, 042.png, 555.png
+    ext: '.png',           // file extension of your reference images
+    collectionSize: 555
+  };
+
+  const GRID = 24;          // full Swampitz canvas
+  const INNER = 16;         // constrained art area
+  const OFFSET = (GRID - INNER) / 2; // 4 — inner area is centered
+
+  const mosaicCanvas = document.getElementById('mosaicCanvas');
+  const mctx = mosaicCanvas.getContext('2d');
+  const guideOverlay = document.getElementById('guideOverlay');
+  const gctx = guideOverlay.getContext('2d');
+  const canvasStack = document.getElementById('canvasStack');
+  const placeholder = document.getElementById('placeholder');
+
+  let currentPalette = [];   // hex colors extracted from the loaded Swamperz
+  let currentWeights = [];   // relative frequency, same order as currentPalette
+  let currentNumber = null;
+  let currentGrid = null;    // last generated 24x24 array (hex or null)
+  let currentSeed = null;
+
+  // ---------- color helpers ----------
+  function rgbToHex(r,g,b){
+    return '#' + [r,g,b].map(v=>Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0')).join('');
+  }
+  function hexToRgb(hex){
+    const v = hex.replace('#','');
+    const n = parseInt(v.length===3 ? v.split('').map(c=>c+c).join('') : v, 16);
+    return [(n>>16)&255, (n>>8)&255, n&255];
+  }
+
+  function showToast(msg){
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(()=>t.classList.remove('show'), 1800);
+  }
+  function setStatus(msg, kind){
+    const el = document.getElementById('status');
+    el.textContent = msg;
+    el.className = 'status ' + (kind || 'idle');
+  }
+
+  // ---------- deterministic PRNG + noise (for reroll variety) ----------
+  function mulberry32(seed){
+    return function(){
+      seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function valueNoiseSampler(seed, res){
+    const rand = mulberry32(seed);
+    const g=[];
+    for(let y=0;y<=res;y++){ const row=[]; for(let x=0;x<=res;x++) row.push(rand()); g.push(row); }
+    return function(u,v){
+      const fx=u*res, fy=v*res;
+      const x0=Math.floor(fx), y0=Math.floor(fy);
+      const x1=Math.min(res,x0+1), y1=Math.min(res,y0+1);
+      const tx=fx-x0, ty=fy-y0;
+      const top=g[y0][x0]*(1-tx)+g[y0][x1]*tx;
+      const bot=g[y1][x0]*(1-tx)+g[y1][x1]*tx;
+      return top*(1-ty)+bot*ty;
+    };
+  }
+  function weightedPick(pal, weights, rand){
+    const total = weights.reduce((a,b)=>a+b,0);
+    if(!total) return pal[Math.floor(rand()*pal.length)];
+    let r = rand()*total;
+    for(let i=0;i<pal.length;i++){ r -= weights[i]; if(r<=0) return pal[i]; }
+    return pal[pal.length-1];
+  }
+  // weighted sample without replacement (A-ES reservoir trick)
+  function weightedSampleIndices(weights, count, rand){
+    const keyed = weights.map((w,i)=>({ i, key: Math.pow(rand(), 1/Math.max(1e-6, w)) }));
+    keyed.sort((a,b)=> b.key - a.key);
+    return keyed.slice(0, count).map(k=>k.i);
+  }
+
+  // ---------- palette extraction from a loaded <img> ----------
+  function extractExactPalette(img){
+    const maxDim = 128;
+    const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.max(1, Math.round(img.naturalWidth*scale));
+    const h = Math.max(1, Math.round(img.naturalHeight*scale));
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const cx = c.getContext('2d');
+    cx.imageSmoothingEnabled = false;
+    cx.drawImage(img, 0, 0, w, h);
+    const data = cx.getImageData(0,0,w,h).data;
+
+    let counts = new Map();
+    for(let i=0;i<data.length;i+=4){
+      if(data[i+3] < 16) continue; // skip transparent
+      const key = data[i]+','+data[i+1]+','+data[i+2];
+      counts.set(key, (counts.get(key)||0)+1);
+    }
+    let entries = [...counts.entries()];
+
+    // If this looks like a photo rather than limited-palette pixel art,
+    // collapse near-duplicate colors from anti-aliasing before capping.
+    if(entries.length > 40){
+      const merged = new Map();
+      for(const [key,count] of entries){
+        const [r,g,b] = key.split(',').map(Number);
+        const pr = Math.round(r/24)*24, pg = Math.round(g/24)*24, pb = Math.round(b/24)*24;
+        const k2 = pr+','+pg+','+pb;
+        merged.set(k2, (merged.get(k2)||0)+count);
+      }
+      entries = [...merged.entries()];
+    }
+
+    entries.sort((a,b)=> b[1]-a[1]);
+    entries = entries.slice(0, 32); // hard safety cap
+
+    const palette = entries.map(([key])=>{
+      const [r,g,b] = key.split(',').map(Number);
+      return rgbToHex(r,g,b);
+    });
+    const weights = entries.map(([,count])=>count);
+    return { palette, weights };
+  }
+
+  // ---------- Swampitz generation ----------
+  // Colored regions come from a small set of random weighted seed points
+  // (Voronoi-style) inside the 16x16 area; a separate noise field then
+  // punches holes through it, leaving the white canvas showing through —
+  // the "broken mosaic" look. Nothing here samples the source image's
+  // actual layout, only its color palette.
+  function generateSwampitz(palette, weights, seed){
+    const rand = mulberry32(seed);
+    const useCount = 1 + Math.floor(rand() * palette.length);
+    const idx = weightedSampleIndices(weights, useCount, rand);
+    const subPal = idx.map(i=>palette[i]);
+    const subWeights = idx.map(i=>weights[i]);
+
+    const nSeeds = Math.max(1, subPal.length + Math.floor(rand()*subPal.length*2));
+    const seeds = [];
+    for(let i=0;i<nSeeds;i++){
+      seeds.push({ x: rand()*INNER, y: rand()*INNER, hex: weightedPick(subPal, subWeights, rand) });
+    }
+
+    const holeNoise = valueNoiseSampler(seed + 42, 4);
+    const holeThreshold = 0.15 + rand()*0.25; // 15%–40% of the square left as gaps
+
+    const grid = new Array(GRID*GRID).fill(null);
+    for(let y=0; y<INNER; y++){
+      for(let x=0; x<INNER; x++){
+        if(holeNoise(x/INNER, y/INNER) < holeThreshold) continue;
+        let best=0, bd=Infinity;
+        for(let i=0;i<seeds.length;i++){
+          const dx=x-seeds[i].x, dy=y-seeds[i].y, d=dx*dx+dy*dy;
+          if(d<bd){ bd=d; best=i; }
+        }
+        grid[(y+OFFSET)*GRID + (x+OFFSET)] = seeds[best].hex;
+      }
+    }
+    return { grid, usedIdx: idx };
+  }
+
+  // ---------- rendering ----------
+  function drawMosaic(grid){
+    mctx.fillStyle = '#ffffff';
+    mctx.fillRect(0,0,GRID,GRID);
+    for(let y=0;y<GRID;y++){
+      for(let x=0;x<GRID;x++){
+        const c = grid[y*GRID+x];
+        if(c){ mctx.fillStyle = c; mctx.fillRect(x,y,1,1); }
+      }
+    }
+  }
+  function drawGuide(){
+    const w = guideOverlay.width, h = guideOverlay.height;
+    gctx.clearRect(0,0,w,h);
+    if(!document.getElementById('guideToggle').checked) return;
+    const cell = w / GRID;
+    const x0 = OFFSET*cell, y0 = OFFSET*cell, sz = INNER*cell;
+    gctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    gctx.setLineDash([4,3]);
+    gctx.lineWidth = 1;
+    gctx.strokeRect(x0+0.5, y0+0.5, sz-1, sz-1);
+    gctx.setLineDash([]);
+  }
+  function resizeGuide(){
+    const rect = canvasStack.getBoundingClientRect();
+    guideOverlay.width = Math.round(rect.width);
+    guideOverlay.height = Math.round(rect.height);
+    drawGuide();
+  }
+  window.addEventListener('resize', resizeGuide);
+  document.getElementById('guideToggle').addEventListener('change', drawGuide);
+
+  function renderPalette(usedIdx){
+    const wrap = document.getElementById('swatches');
+    const empty = document.getElementById('paletteEmpty');
+    const note = document.getElementById('paletteNote');
+    wrap.innerHTML = '';
+    empty.style.display = currentPalette.length ? 'none' : 'block';
+    document.getElementById('paletteCount').textContent = currentPalette.length ? currentPalette.length + ' found' : '';
+    currentPalette.forEach((hex,i)=>{
+      const sw = document.createElement('div');
+      sw.className = 'swatch' + (usedIdx && !usedIdx.includes(i) ? ' unused' : '');
+      sw.style.background = hex;
+      sw.title = hex;
+      wrap.appendChild(sw);
+    });
+    if(currentPalette.length){
+      note.style.display = 'block';
+      note.textContent = usedIdx
+        ? 'Using ' + usedIdx.length + ' of ' + currentPalette.length + ' colors this roll — dimmed swatches sat out.'
+        : currentPalette.length + ' colors available.';
+    } else {
+      note.style.display = 'none';
+    }
+  }
+
+  // ---------- load a Swamperz + run first generation ----------
+  function padded(n){ return String(n).padStart(CONFIG.digits, '0'); }
+
+  function loadSwamperz(num){
+    num = Math.round(num);
+    if(!Number.isFinite(num) || num < 1 || num > CONFIG.collectionSize){
+      setStatus('Enter a number from 1–' + CONFIG.collectionSize + '.', 'err');
+      return;
+    }
+    document.getElementById('numberInput').value = num;
+    setStatus('Loading Swamperz #' + padded(num) + ' …', 'idle');
+    document.getElementById('rerollBtn').disabled = true;
+    document.getElementById('downloadBtn').disabled = true;
+
+    const path = CONFIG.folder + padded(num) + CONFIG.ext;
+    const img = new Image();
+    img.onload = ()=>{
+      currentNumber = num;
+      const { palette, weights } = extractExactPalette(img);
+      currentPalette = palette;
+      currentWeights = weights;
+
+      const thumb = document.getElementById('refThumb');
+      thumb.src = path;
+      document.getElementById('refThumbWrap').style.display = 'block';
+      document.getElementById('refLabel').textContent = 'Swamperz #' + padded(num);
+
+      placeholder.style.display = 'none';
+      document.getElementById('rerollBtn').disabled = false;
+      document.getElementById('downloadBtn').disabled = false;
+
+      setStatus('Swamperz #' + padded(num) + ' loaded — ' + palette.length + ' colors extracted.', 'ok');
+      rollNewSeed();
+    };
+    img.onerror = ()=>{
+      currentNumber = null;
+      currentPalette = []; currentWeights = [];
+      renderPalette(null);
+      document.getElementById('refThumbWrap').style.display = 'none';
+      placeholder.style.display = 'flex';
+      placeholder.textContent = 'Could not find ' + path + ' — add it to your swamperz/ folder (see the comment at the top of this file).';
+      setStatus('Missing file: ' + path, 'err');
+    };
+    img.src = path;
+  }
+
+  function rollNewSeed(){
+    currentSeed = Math.floor(Math.random()*1e9);
+    const { grid, usedIdx } = generateSwampitz(currentPalette, currentWeights, currentSeed);
+    currentGrid = grid;
+    drawMosaic(grid);
+    renderPalette(usedIdx);
+  }
+
+  // ---------- controls ----------
+  document.getElementById('goBtn').addEventListener('click', ()=>{
+    loadSwamperz(parseInt(document.getElementById('numberInput').value, 10));
+  });
+  document.getElementById('numberInput').addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter') loadSwamperz(parseInt(e.target.value, 10));
+  });
+  document.getElementById('prevBtn').addEventListener('click', ()=>{
+    const n = currentNumber || 1;
+    loadSwamperz(Math.max(1, n-1));
+  });
+  document.getElementById('nextBtn').addEventListener('click', ()=>{
+    const n = currentNumber || 0;
+    loadSwamperz(Math.min(CONFIG.collectionSize, n+1));
+  });
+  document.getElementById('rerollBtn').addEventListener('click', ()=>{
+    if(!currentPalette.length) return;
+    rollNewSeed();
+    showToast('New Swampitz generated');
+  });
+  document.getElementById('downloadBtn').addEventListener('click', ()=>{
+    if(!currentGrid) return;
+    const out = document.createElement('canvas');
+    out.width = 600; out.height = 600;
+    const octx = out.getContext('2d');
+    octx.imageSmoothingEnabled = false;
+    octx.drawImage(mosaicCanvas, 0, 0, GRID, GRID, 0, 0, 600, 600);
+    out.toBlob((blob)=>{
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'swampitz-' + padded(currentNumber) + '.png';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast('Downloaded 600×600 PNG');
+    }, 'image/png');
+  });
+
+  // ---------- init ----------
+  resizeGuide();
+  mctx.fillStyle = '#ffffff';
+  mctx.fillRect(0,0,GRID,GRID);
+})();
+</script>
+</body>
+</html>
