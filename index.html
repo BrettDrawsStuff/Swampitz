@@ -415,7 +415,7 @@
     }
 
     const holeNoise = valueNoiseSampler(seed + 42, 4);
-    const holeThreshold = 0.15 + rand()*0.25; // 15%–40% of the square left as gaps
+    const holeThreshold = 0.25 + rand()*0.25; // 15%–40% of the square left as gaps
 
     const grid = new Array(GRID*GRID).fill(null);
     for(let y=0; y<INNER; y++){
